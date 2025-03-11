@@ -187,12 +187,16 @@ if __name__ == "__main__":
     if info == None:
         log_e("Failed to get system info. make sure the target Axe is online and the IP address is correct.")
         sys.exit(1)
-    
-    version = info.get('version', "v0.0.00")
-    result = compare_versions(version, FW_VERSION_REQUIRED)
-    if result < 0:
-        log_w(f"WARNING: The firmware version {version} haven't supported yet. firmware required {FW_VERSION_REQUIRED} at least.")
-        sys.exit(1)
+        
+    board_type = info.get('boardType', "Unknown")
+    # For NMAxe, check if the firmware version is supported
+    # For other Axe models, the firmware version check is not required
+    if "NMAxe" in board_type:
+        version = info.get('version', "v0.0.00")
+        result = compare_versions(version, FW_VERSION_REQUIRED)
+        if result < 0:
+            log_w(f"WARNING: The firmware version {version} haven't supported yet. firmware required {FW_VERSION_REQUIRED} at least.")
+            sys.exit(1)
 
     # Estimate the total time cost
     est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, sample_interval, benchmark_time)
@@ -204,7 +208,7 @@ if __name__ == "__main__":
     for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):
         for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):
             benchmark_count += 1
-            log_w(f"================================================= {benchmark_count:3d} ===================================================")
+            log_w(f"================================================= {benchmark_count:3d} =================================================")
             # Set the system settings
             if set_system_settings(target_ip, vcore, freq) == False:
                 log_e("Failed to set system settings. Exiting...")
