@@ -39,6 +39,17 @@ def validate_range(value):
     except ValueError:
         raise ArgumentTypeError(f"Invalid range format: {value}. Expected format: number1,number2")
 
+def restart_system(ip):
+    try:
+        log_i("Restarting the system...")
+        response = requests.post(f"http://{ip}/api/system/restart", timeout=10)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        wait_time = 90  # Wait for 90s for the system to restart and start hashing
+        log_w(f"System restarted successfully. Waiting {wait_time} for the system to start hashing...")
+        time.sleep(wait_time) 
+    except requests.exceptions.RequestException as e:
+        log_e(f"Error restarting the system: {e}")
+
 def get_system_info(ip):
     retries = 3
     for attempt in range(retries):
@@ -56,11 +67,25 @@ def get_system_info(ip):
         time.sleep(5)  # Wait before retrying
     return None
 
+def set_system_settings(ip, core_voltage, frequency):
+    settings = {
+        "coreVoltage": core_voltage,
+        "frequency": frequency
+    }
+    try:
+        response = requests.patch(f"http://{ip}/api/system", json=settings, timeout=10)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        log_i(f"Applying settings: Voltage = {core_voltage}mV, Frequency = {frequency}MHz")
+        time.sleep(1)
+        restart_system(ip)
+    except requests.exceptions.RequestException as e:
+        log_e(f"Error setting system settings: {e}")
+
+
+
 def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcore_step, sample_interval, benchmark_time=600):
     freq_steps = (freq_max - freq_min) // freq_step + 1
-    log_i(f"Total frequency steps: {freq_steps}")
     vcore_steps = (vcore_max - vcore_min) // vcore_step + 1
-    log_i(f"Total vcore steps: {vcore_steps}")
     total_steps = freq_steps * vcore_steps
     return total_steps * benchmark_time
 
@@ -86,13 +111,16 @@ if __name__ == "__main__":
     vcore_step      = args.vcore_step
     sample_interval = args.sample_interval
     benchmark_time  = args.benchmark_time
+    target_ip       = args.axe_ip   
 
     log_i(f"Freq  range from {freq_min_val}MHz to {freq_max_val}MHz, step: {freq_step}MHz")
     log_i(f"Vcore range from {vcore_min_val}mV to {vcore_max_val}mV, step: {vcore_step}mV")
-    log_i(f"Sample every {sample_interval} seconds")
-
     est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, sample_interval, benchmark_time)
-    log_i(f"Estimated total benchmark time about {est_time//3600} hours {est_time%3600//60} minutes, please be patient...")
+    log_i(f"Sample every {sample_interval} seconds, estimated total time cost: {est_time//3600} hours {est_time%3600//60} minutes {est_time%60} seconds, please be patient...")
+
+
+    set_system_settings(target_ip, vcore_min_val, vcore_min_val)
+
     sys.exit(0)
 
 
