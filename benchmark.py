@@ -1,8 +1,10 @@
 import requests, time, json, signal, sys
 from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
+import re
 
-_VERSION_ = "v0.1.01"
+_VERSION_           = "v0.1.01"
+FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
     log_p("===========================================DISCLAIMER=================================================")
@@ -25,6 +27,40 @@ def load_logo():
     log_i("           \\/__/        \\/__/      ")
     log_i(f"{_VERSION_}".center(40, '-'))
 
+def compare_versions(version1, version2):
+    pattern = re.compile(r'v?(\d+)\.(\d+)\.(\d+)([a-z]?)')
+    
+    # check if the versions match the pattern
+    match1 = pattern.match(version1)
+    match2 = pattern.match(version2)
+    
+    if not match1 or not match2:
+        raise ValueError("Invalid version format")
+    
+    # extract the version parts
+    major1, minor1, patch1, suffix1 = match1.groups()
+    major2, minor2, patch2, suffix2 = match2.groups()
+    
+    major1, minor1, patch1 = int(major1), int(minor1), int(patch1)
+    major2, minor2, patch2 = int(major2), int(minor2), int(patch2)
+    
+    # compare the version parts
+    if major1 != major2:
+        return major1 - major2
+    if minor1 != minor2:
+        return minor1 - minor2
+    if patch1 != patch2:
+        return patch1 - patch2
+    if suffix1 != suffix2:
+        # if one version has a suffix and the other doesn't, the one without the suffix is considered greater
+        if not suffix1:
+            return -1
+        if not suffix2:
+            return 1
+        return ord(suffix1) - ord(suffix2)
+    
+    return 0
+
 def validate_range(value):
     try:
         # check if the string contains exactly one comma
@@ -41,14 +77,15 @@ def validate_range(value):
 
 def restart_system(ip):
     try:
-        log_i("Restarting the system...")
+        time.sleep(1)
+        log_i("Restarting the miner...")
         response = requests.post(f"http://{ip}/api/system/restart", timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
-        wait_time = 90  # Wait for 90s for the system to restart and start hashing
-        log_w(f"System restarted successfully. Waiting {wait_time} for the system to start hashing...")
-        time.sleep(wait_time) 
+        log_w("Miner restarted!")
+        return True
     except requests.exceptions.RequestException as e:
         log_e(f"Error restarting the system: {e}")
+        return False
 
 def get_system_info(ip):
     retries = 3
@@ -75,13 +112,11 @@ def set_system_settings(ip, core_voltage, frequency):
     try:
         response = requests.patch(f"http://{ip}/api/system", json=settings, timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
-        log_i(f"Applying settings: Voltage = {core_voltage}mV, Frequency = {frequency}MHz")
-        time.sleep(1)
-        restart_system(ip)
+        log_i(f"System settings updated: {settings}")
+        return True
     except requests.exceptions.RequestException as e:
         log_e(f"Error setting system settings: {e}")
-
-
+        return False
 
 def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcore_step, sample_interval, benchmark_time=600):
     freq_steps = (freq_max - freq_min) // freq_step + 1
@@ -89,7 +124,34 @@ def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcor
     total_steps = freq_steps * vcore_steps
     return total_steps * benchmark_time
 
+def countdown_timer(seconds):
+    for remaining in range(seconds, 0, -1):
+        sys.stdout.write(f"\r[{get_current_time()}] Benchmark will start in {remaining:3d}s later...")
+        sys.stdout.flush()
+        time.sleep(1)
+    sys.stdout.write("\r" + " " * 100 + "\r")
+    sys.stdout.flush()
 
+def benchmark(target_ip, sample_interval, benchmark_time):
+    b_start = int(time.time())
+    log_i("Benchmark start...")
+    while True:
+        time.sleep(sample_interval)
+        info = get_system_info(target_ip)
+        if info == None:
+            log_e("Failed to get system info...")
+            time.sleep(1)
+            continue
+
+        if int(time.time()) - b_start > benchmark_time:
+            log_w("Benchmark finished!")
+            break
+
+        hr, vt, at, freq, vcore, vbus, ibus = info.get('hashRate', 0), info.get('vrTemp', 0), info.get('temp', 0), info.get('frequency', 0), info.get('coreVoltageActual', 0), info.get('voltage', 0), info.get('current', 0)
+        small_core_count, asic_count        = info.get("smallCoreCount", 0), info.get("asicCount", 0)
+        exp_hr                              = freq * ((small_core_count * asic_count) / 1000)  # Calculate expected hashrate based on frequency
+        log_i(f"| HR: {hr:6.1f}GH/s | EXP HR {exp_hr:5.0f}GH/s | VT: {vt}°C | AT: {at}°C | Freq: {freq}MHz | Vcore: {vcore}mV | Vbus: {vbus}mV | Ibus: {ibus}mA |")
+        
 
 if __name__ == "__main__":
     load_logo()
@@ -112,22 +174,41 @@ if __name__ == "__main__":
     sample_interval = args.sample_interval
     benchmark_time  = args.benchmark_time
     target_ip       = args.axe_ip   
+    # Get the system info to check if the system is online and firmware version supported
+    info = get_system_info(target_ip)
+    if info == None:
+        log_e("Failed to get system info. make sure the target Axe is online and the IP address is correct.")
+        sys.exit(1)
+    
+    version = info.get('version', "v0.0.00")
+    result = compare_versions(version, FW_VERSION_REQUIRED)
+    if result < 0:
+        log_w(f"WARNING: The firmware version {version} haven't supported yet. firmware required {FW_VERSION_REQUIRED} at least.")
+        sys.exit(1)
 
+    # Estimate the total time cost
+    est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, sample_interval, benchmark_time)
     log_i(f"Freq  range from {freq_min_val}MHz to {freq_max_val}MHz, step: {freq_step}MHz")
     log_i(f"Vcore range from {vcore_min_val}mV to {vcore_max_val}mV, step: {vcore_step}mV")
-    est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, sample_interval, benchmark_time)
-    log_i(f"Sample every {sample_interval} seconds, estimated total time cost: {est_time//3600} hours {est_time%3600//60} minutes {est_time%60} seconds, please be patient...")
-
-
-    set_system_settings(target_ip, vcore_min_val, vcore_min_val)
-
-    sys.exit(0)
-
-
+    log_i(f"Sample every {sample_interval} seconds, estimated total time cost: {est_time//3600}h {est_time%3600//60}m {est_time%60}s, please be patient...")
 
     while True:
-        info = get_system_info(args.axe_ip)
-        # log_i(json.dumps(info, indent=4))
-        time.sleep(5)
+        # Set the system settings
+        if set_system_settings(target_ip, vcore_min_val, freq_min_val) == False:
+            log_e("Failed to set system settings. Exiting...")
+            sys.exit(1)
+
+        # Restart the system
+        if restart_system(target_ip) == False:
+            log_e("Failed to restart the system. Exiting...")
+            sys.exit(1)
+
+        # Wait for the system to stabilize
+        log_w("Waiting for the system to stabilize...")
+        countdown_timer(30)
+
+        # Start the benchmark
+        benchmark(target_ip, sample_interval, benchmark_time)
+
 
 

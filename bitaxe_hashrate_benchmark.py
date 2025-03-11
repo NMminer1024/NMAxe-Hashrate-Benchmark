@@ -174,7 +174,7 @@ def restart_system():
             print(YELLOW + "Applying new settings and waiting 90s for system stabilization..." + RESET)
             response = requests.post(f"{bitaxe_ip}/api/system/restart", timeout=10)
             response.raise_for_status()  # Raise an exception for HTTP errors
-            print(YELLOW + "System restarted" + RESET)
+            print(YELLOW + "System restart initiated. Waiting 90s for system stabilization..." + RESET)
             time.sleep(90)  # Allow 90s time for the system to restart and start hashing
         else:
             print(YELLOW + "Applying final settings..." + RESET)
