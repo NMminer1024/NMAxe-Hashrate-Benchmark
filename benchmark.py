@@ -1,4 +1,5 @@
-import requests, time, json, signal, sys
+
+import requests, time, json, ctypes, sys
 from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
@@ -126,7 +127,7 @@ def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcor
 
 def countdown_timer(seconds):
     for remaining in range(seconds, 0, -1):
-        sys.stdout.write(f"\r[{get_current_time()}] Benchmark will start in {remaining:3d}s later...")
+        sys.stdout.write(f"\r[{get_current_time()}] Benchmark will start after {remaining:3d}s...")
         sys.stdout.flush()
         time.sleep(1)
     sys.stdout.write("\r" + " " * 100 + "\r")
@@ -135,6 +136,9 @@ def countdown_timer(seconds):
 def benchmark(target_ip, sample_interval, benchmark_time):
     b_start = int(time.time())
     log_i("Benchmark start...")
+    current_count, total_count = 0, benchmark_time // sample_interval
+    hr_sum, eff_sum, pwr_sum = 0, 0, 0
+    exp_hr = 0
     while True:
         time.sleep(sample_interval)
         info = get_system_info(target_ip)
@@ -142,18 +146,22 @@ def benchmark(target_ip, sample_interval, benchmark_time):
             log_e("Failed to get system info...")
             time.sleep(1)
             continue
-
-        if int(time.time()) - b_start > benchmark_time:
-            log_w("Benchmark finished!")
-            break
-
+        current_count += 1
         hr, vt, at, freq, vcore, vbus, ibus = info.get('hashRate', 0), info.get('vrTemp', 0), info.get('temp', 0), info.get('frequency', 0), info.get('coreVoltageActual', 0), info.get('voltage', 0), info.get('current', 0)
         small_core_count, asic_count        = info.get("smallCoreCount", 0), info.get("asicCount", 0)
         exp_hr                              = freq * ((small_core_count * asic_count) / 1000)  # Calculate expected hashrate based on frequency
-        log_i(f"| HR: {hr:6.1f}GH/s | EXP HR {exp_hr:5.0f}GH/s | VT: {vt}°C | AT: {at}°C | Freq: {freq}MHz | Vcore: {vcore}mV | Vbus: {vbus}mV | Ibus: {ibus}mA |")
-        
+        hr_sum                              += hr
+        eff_sum                             += ((vbus * ibus / 1e6) / (hr / 1e3)) if hr > 0 else 0
+        pwr_sum                             += vbus*ibus/1e6
+        log_i(f"[{current_count:3d}/{total_count:3d}] [{(100*current_count/total_count):3.1f}%] | HR: {hr:5.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt}°C | AT: {at}°C | Freq: {freq}MHz | Vcore: {vcore}mV | Vbus: {vbus}mV | Ibus: {ibus}mA |")
+        if current_count >= total_count:
+            break
+    result = (hr_sum / total_count) >= exp_hr*0.94
+    return result, hr_sum / total_count, exp_hr, eff_sum/current_count, pwr_sum/current_count
 
 if __name__ == "__main__":
+    kernel32 = ctypes.windll.kernel32
+    kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), 128)
     load_logo()
     # Parse arguments
     parser = ArgumentParser(description="=============== NMAxe Benchmark Tool ===============")
@@ -192,23 +200,35 @@ if __name__ == "__main__":
     log_i(f"Vcore range from {vcore_min_val}mV to {vcore_max_val}mV, step: {vcore_step}mV")
     log_i(f"Sample every {sample_interval} seconds, estimated total time cost: {est_time//3600}h {est_time%3600//60}m {est_time%60}s, please be patient...")
 
-    while True:
-        # Set the system settings
-        if set_system_settings(target_ip, vcore_min_val, freq_min_val) == False:
-            log_e("Failed to set system settings. Exiting...")
-            sys.exit(1)
+    benchmark_count = 0
+    for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):
+        for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):
+            benchmark_count += 1
+            log_w(f"================================================= {benchmark_count:3d} ===================================================")
+            # Set the system settings
+            if set_system_settings(target_ip, vcore, freq) == False:
+                log_e("Failed to set system settings. Exiting...")
+                sys.exit(1)
 
-        # Restart the system
-        if restart_system(target_ip) == False:
-            log_e("Failed to restart the system. Exiting...")
-            sys.exit(1)
+            # Restart the system
+            if restart_system(target_ip) == False:
+                log_e("Failed to restart the system. Exiting...")
+                sys.exit(1)
 
-        # Wait for the system to stabilize
-        log_w("Waiting for the system to stabilize...")
-        countdown_timer(30)
+            # Wait for the system to stabilize
+            log_w("Waiting for the system to stabilize...")
+            countdown_timer(200)  
 
-        # Start the benchmark
-        benchmark(target_ip, sample_interval, benchmark_time)
+            # Start the benchmark
+            res, avg_hr, exp_hr, avg_eff, avg_pwr = benchmark(target_ip, sample_interval, benchmark_time)
+            log_i(f"Completed! | Avg HR: {avg_hr:6.1f}GH/s | expected HR: {exp_hr:6.1f}GH/s | Avg EFF: {avg_eff:6.3f}J/TH | Avg PWR: {avg_pwr:6.3f}W")
+            if res == True:
+                log_i(f"Benchmark passed! Vcore: {vcore}mV, Freq: {freq}MHz")
+                break
+            else:   
+                log_e("Benchmark failed! Retrying...")
+                time.sleep(1)
+
 
 
 
