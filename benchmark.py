@@ -103,8 +103,6 @@ def get_system_info(ip):
         log_e(f"Error fetching system info: {e}")
         return None
 
-        
-
 def set_system_settings(ip, core_voltage, frequency):
     settings = {
         "coreVoltage": core_voltage,
@@ -113,17 +111,17 @@ def set_system_settings(ip, core_voltage, frequency):
     try:
         response = requests.patch(f"http://{ip}/api/system", json=settings, timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
-        log_i(f"System settings updated: {settings}")
+        log_i(f"System settings update, Vcore: {core_voltage}mV, Frequency: {frequency}MHz")
         return True
     except requests.exceptions.RequestException as e:
         log_e(f"Error setting system settings: {e}")
         return False
 
-def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcore_step, sample_interval, benchmark_time=600):
+def est_benchmark_time(freq_min, freq_max, freq_step, vcore_min, vcore_max, vcore_step, benchmark_time, stabilize_time):
     freq_steps = (freq_max - freq_min) // freq_step + 1
     vcore_steps = (vcore_max - vcore_min) // vcore_step + 1
     total_steps = freq_steps * vcore_steps
-    return total_steps, total_steps * benchmark_time + total_steps * 90  # 90 seconds for system stabilization
+    return total_steps, total_steps * benchmark_time + total_steps * stabilize_time  # 'stabilize_time' seconds for system stabilization
 
 def countdown_timer(seconds):
     for remaining in range(seconds, 0, -1):
@@ -139,6 +137,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
     hr_sum, eff_sum, pwr_sum, at_sum = 0, 0, 0, 0
     hr_avg, eff_avg, pwr_avg, at_avg = 0, 0, 0, 0
     exp_hr, err_cnt = 0, 0
+    remaining_time = benchmark_time
     while True:
         time.sleep(sample_interval)
         info = get_system_info(target_ip)
@@ -164,8 +163,8 @@ def benchmark(target_ip, sample_interval, benchmark_time):
         eff_avg                             = eff_sum / current_count
         pwr_avg                             = pwr_sum / current_count
         at_avg                              = at_sum / current_count
-
-        log_i(f"[{current_count:3d}/{total_count:3d}] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3}°C | AT: {at:3}°C | Freq: {freq:3}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
+        remaining_time                      = (benchmark_time - current_count * sample_interval) if (benchmark_time - current_count * sample_interval) > 0 else 0
+        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3}°C | AT: {at:3}°C | Freq: {freq:3}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
         # Check if the benchmark is completed
         if current_count >= total_count:
             break
@@ -177,9 +176,10 @@ def benchmark(target_ip, sample_interval, benchmark_time):
     result = (hr_sum / total_count) >= exp_hr*0.94 # Check if the average hashrate is at least 94% of the expected hashrate
     return result, hr_avg, exp_hr, eff_avg, pwr_avg, at_avg
 
-def save_benchmark_results(target_ip, result):
+def save_benchmark_report(target_ip, result):
     try:
-        filename = f"benchmark_results_{target_ip}.json"
+        now = datetime.now().strftime('%y-%m-%d')
+        filename = f"{now}_benchmark_results_{target_ip}.json"
         with open(filename, "w") as f:
             json.dump(result, f, indent=4)
         log_i(f"Results saved to {filename}")
@@ -193,12 +193,12 @@ if __name__ == "__main__":
     # Parse arguments
     parser = ArgumentParser(description="=============== NMAxe Benchmark Tool ===============")
     parser.add_argument("-fr", "--freq_range", type=validate_range, default="400,625", help="ASIC Frequency range, default: 400~625 MHz")
-    parser.add_argument("-fs ", "--freq_step", type=int, default=25, help="Frequency step, default: 25 MHz")
+    parser.add_argument("-fs ", "--freq_step", type=int, default=50, help="Frequency step, default: 50 MHz")
     parser.add_argument("-vr", "--vcore_range", type=validate_range, default="1000,1300", help="ASIC Vcore range, default: 1000~1300 mV")
     parser.add_argument("-vs", "--vcore_step", type=int, default=25, help="Vcore step, default: 25 mV")
     parser.add_argument("-si", "--sample_interval", type=int, default=10, help="Sample interval in seconds, default: 10 seconds")
     parser.add_argument("-bt", "--benchmark_time", type=int, default=600, help="Benchmark time in seconds, default: 600 seconds")
-    parser.add_argument("-st", "--stabilize_time", type=int, default=90, help="Stabilize time in seconds, default: 90 seconds")
+    parser.add_argument("-st", "--stabilize_time", type=int, default=240, help="Wait stabilize time before benchmark in seconds, default: 240 seconds")
     parser.add_argument("-ip", "--axe_ip", type=str, help= "Target Axe IP address", required=True)
     args = parser.parse_args()
 
@@ -229,17 +229,17 @@ if __name__ == "__main__":
             sys.exit(1)
 
     # Estimate the total time cost
-    est_cnt, est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, sample_interval, benchmark_time)
+    est_cnt, est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, benchmark_time, stabilize_time)
     log_i(f"Freq  range from {freq_min_val}MHz to {freq_max_val}MHz, step: {freq_step}MHz")
     log_i(f"Vcore range from {vcore_min_val}mV to {vcore_max_val}mV, step: {vcore_step}mV")
-    log_i(f"Sample every {sample_interval} seconds, estimated total {est_cnt} times take {est_time//3600}h {est_time%3600//60}m {est_time%60}s at most, please be patient...")
+    log_i(f"Sample every {sample_interval} seconds, estimated total {est_cnt} rounds will take {est_time//3600}h {est_time%3600//60}m {est_time%60}s at most, please be patient...")
 
     benchmark_count = 0
     results = []
     for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):
         for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):
             benchmark_count += 1
-            log_w(f"================================================ {benchmark_count:3d}  =================================================")
+            log_w(f"=============================================== {benchmark_count:3d}  =================================================")
             # Set the system settings
             if set_system_settings(target_ip, vcore, freq) == False:
                 log_e("Failed to set system settings. Exiting...")
@@ -255,7 +255,7 @@ if __name__ == "__main__":
             # Start the benchmark
             res, avg_hr, exp_hr, avg_eff, avg_pwr, avg_at = benchmark(target_ip, sample_interval, benchmark_time)
 
-            log_i(f"Completed! | Avg HR: {avg_hr:6.1f}GH/s | expected HR: {exp_hr:6.1f}GH/s | Avg EFF: {avg_eff:6.3f}J/TH | Avg PWR: {avg_pwr:6.3f}W")
+            log_w(f"Completed! | Avg HR: {avg_hr:6.1f}GH/s | expected HR: {exp_hr:6.1f}GH/s | Avg EFF: {avg_eff:6.3f}J/TH | Avg PWR: {avg_pwr:6.3f}W")
             if res == True:
                 log_i(f"Benchmark [{benchmark_count}] passed! Vcore: {vcore}mV, Freq: {freq}MHz")
                 # Save the benchmark results
@@ -265,19 +265,36 @@ if __name__ == "__main__":
                     "expectedHashRate": f"{round(exp_hr, 1)}GH/s",
                     "averageHashRate": f"{round(avg_hr, 1)}GH/s",
                     "averageTemperature": f"{round(avg_at, 1)}'C",  # average asic temperature
-                    "efficiencyJTH": f"{round(avg_eff, 2)}J/TH"
+                    "efficiencyJTH": f"{round(avg_eff, 2)}J/TH",
+                    "averagePower": f"{round(avg_pwr, 2)}W"
                 }
                 results.append(result)
-                save_benchmark_results(target_ip, results)
+                save_benchmark_report(target_ip, results)
                 break
             else:   
                 log_e("Benchmark failed! Retrying...")
                 time.sleep(1)
 
     log_i("Benchmark completed!")
+    max_avg_hr, best_result = 0, None
+    # Find the best result
     log_i("Results:")
     for i, result in enumerate(results):
         log_i(f"[{i+1}] {result}")
+        avg_hr = float(result['averageHashRate'].replace('GH/s', ''))
+        if avg_hr > max_avg_hr:
+            max_avg_hr = avg_hr
+            best_result = result
+
+    # Print the best result
+    if best_result:
+        log_i("Best Result:")
+        log_i(f"{best_result}")
+        log_i("Use the best result to set the system settings.")
+        # Set the best system settings
+        set_system_settings(target_ip, int(best_result['coreVoltage'].replace('mV', '')), int(best_result['frequency'].replace('MHz', '')))
+        # Restart the system
+        restart_system(target_ip)
     log_i("Exiting...")
 
 
