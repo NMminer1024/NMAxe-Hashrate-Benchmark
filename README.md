@@ -43,7 +43,7 @@ pip install -r requirements.txt
 
 ### options:
   *  -h, --help               Show this help message and exit
-  *  -ip, --axe_ip AXE_IP,    Target Axe IP address , `required`
+  *  -ip, --axe_ip ,          Target Axe IP address , `required`
   *  -fr, --freq_range ,      ASIC Frequency range, default: 400~625 MHz , `optional`
   *  -fs, --freq_step ,       Frequency step, default: 50 MHz , `optional`
   *  -vr, --vcore_range ,     ASIC Vcore range, default: 1000~1300 mV , `optional`
