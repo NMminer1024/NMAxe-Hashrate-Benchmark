@@ -136,7 +136,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
     current_count, total_count = 0, benchmark_time // sample_interval
     hr_sum, eff_sum, pwr_sum, at_sum = 0, 0, 0, 0
     hr_avg, eff_avg, pwr_avg, at_avg = 0, 0, 0, 0
-    exp_hr, err_cnt = 0, 0
+    exp_hr, err_cnt , zero_hr_cnt = 0, 0, 0
     remaining_time = benchmark_time
     while True:
         time.sleep(sample_interval)
@@ -149,6 +149,19 @@ def benchmark(target_ip, sample_interval, benchmark_time):
                 break
             log_e(f"Failed to get system info, {err_cnt}/3")
             continue
+        else:
+            if info.get('hashRate', 0) == 0:
+                zero_hr_cnt += 1
+            else :
+                zero_hr_cnt = 0
+
+        # If the hashrate is continuous zero for 5 times, exit the benchmark
+        if zero_hr_cnt >= 5:
+            log_e("Get zero-hashrate 5 times. Exiting this benchmark...")
+            break
+
+
+
         current_count += 1
         hr, vt, at, freq, vcore, vbus, ibus = info.get('hashRate', 0), info.get('vrTemp', 0), info.get('temp', 0), info.get('frequency', 0), info.get('coreVoltageActual', 0), info.get('voltage', 0), info.get('current', 0)
         small_core_count, asic_count        = info.get("smallCoreCount", 0), info.get("asicCount", 0)
@@ -236,8 +249,8 @@ if __name__ == "__main__":
 
     benchmark_count = 0
     results = []
-    for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):
-        for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):
+    for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):#increase the freq if stabel
+        for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):# increase the vcore if unstabel
             benchmark_count += 1
             log_w(f"=============================================== {benchmark_count:3d}  =================================================")
             # Set the system settings
@@ -257,7 +270,7 @@ if __name__ == "__main__":
 
             log_w(f"Completed! | Avg HR: {avg_hr:6.1f}GH/s | expected HR: {exp_hr:6.1f}GH/s | Avg EFF: {avg_eff:6.3f}J/TH | Avg PWR: {avg_pwr:6.3f}W")
             if res == True:
-                log_i(f"Benchmark [{benchmark_count}] passed! Vcore: {vcore}mV, Freq: {freq}MHz")
+                log_i(f"Stable setting {vcore}mV, Freq: {freq}MHz, increase freq and retrying...")
                 # Save the benchmark results
                 result = {
                     "coreVoltage": f"{vcore}mV",
@@ -272,7 +285,7 @@ if __name__ == "__main__":
                 save_benchmark_report(target_ip, results)
                 break
             else:   
-                log_e("Benchmark failed! Retrying...")
+                log_e(f"Unstable settings {vcore}mV, Freq: {freq}MHz, increase Vcore and retrying...")
                 time.sleep(1)
 
     log_i("Benchmark completed!")

@@ -90,7 +90,7 @@ The tool follows this process:
 6. Automatically applies the best performing stable settings
 7. Restarts system after each test for stability
 8. Allows 180-second stabilization period between tests
-9. Stop the test early if the hashrate is not up to standard after 5 minutes
+9. Stop the benchmark early if the hashrate is not up to standard after 5 minutes
 
 ## Data Processing
 
