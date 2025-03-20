@@ -1,6 +1,7 @@
-# Bitaxe Hashrate Benchmark
+# NMAxe Hashrate Benchmark
 
-A Python-based benchmarking tool for optimizing Bitaxe mining performance by testing different voltage and frequency combinations while monitoring hashrate, temperature, and power efficiency.
+- A Python-based benchmarking tool for optimizing NMAxe and other Axe series mining performance by testing different voltage and frequency combinations while monitoring hashrate, temperature, and power efficiency.
+- Added an executable file and script to facilitate one-click startup for ordinary users
 
 ## Features
 
@@ -9,14 +10,10 @@ A Python-based benchmarking tool for optimizing Bitaxe mining performance by tes
 - Power efficiency calculations (J/TH)
 - Automatic saving of benchmark results
 - Graceful shutdown with best settings retention
-- Docker support for easy deployment
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- Access to a Bitaxe miner on your network
-- Docker (optional, for containerized deployment)
-- Git (optional, for cloning the repository)
+- Windows 10 and above
 
 ## Installation
 
@@ -24,8 +21,8 @@ A Python-based benchmarking tool for optimizing Bitaxe mining performance by tes
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/mrv777/Bitaxe-Hashrate-Benchmark.git
-cd Bitaxe-Hashrate-Benchmark
+git clone git@github.com:NMminer1024/NMAxe-Hashrate-Benchmark.git
+cd NMAxe-Hashrate-Benchmark
 ```
 
 2. Create and activate a virtual environment:
@@ -42,67 +39,31 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Docker Installation
+## CMD options：
 
-1. Build the Docker image:
-```bash
-docker build -t bitaxe-benchmark .
+### options:
+  *  -h, --help               Show this help message and exit
+  *  -ip, --axe_ip AXE_IP,    Target Axe IP address , `required`
+  *  -fr, --freq_range ,      ASIC Frequency range, default: 400~625 MHz , `optional`
+  *  -fs, --freq_step ,       Frequency step, default: 50 MHz , `optional`
+  *  -vr, --vcore_range ,     ASIC Vcore range, default: 1000~1300 mV , `optional`
+  *  -vs, --vcore_step ,      Vcore step, default: 25 mV , `optional`
+  *  -si, --sample_interval , Sample interval in seconds, default: 10 seconds , `optional`
+  *  -bt, --benchmark_time ,  Benchmark time for every round in seconds, default: 600 seconds , `optional`
+  *  -st, --stabilize_time ,  Wait stabilize time before benchmark in seconds, default: 240 seconds , `optional`
+### Sample Usages:
+For expert benchmark：
 ```
-
-## Usage
-
-### Standard Usage
-
-Run the benchmark tool by providing your Bitaxe's IP address:
-
-```bash
-python bitaxe_hashrate_benchmark.py <bitaxe_ip>
+benchmark.exe -ip 192.168.123.56 -fr 400,625 -vr 1100,1300 -fs 25 -vs 50 -bt 600 -st 180
 ```
-
-Optional parameters:
-- `-v, --voltage`: Initial voltage in mV (default: 1150)
-- `-f, --frequency`: Initial frequency in MHz (default: 500)
-
-Example:
-```bash
-python bitaxe_hashrate_benchmark.py 192.168.2.29 -v 1175 -f 775
+For default benchmark：
 ```
-
-### Docker Usage (Optional)
-
-Run the container with your Bitaxe's IP address:
-
-```bash
-docker run --rm bitaxe-benchmark <bitaxe_ip> [options]
+benchmark.exe -ip 192.168.123.56 
 ```
-
-Example:
-```bash
-docker run --rm bitaxe-benchmark 192.168.2.26 -v 1200 -f 550
-```
-
-## Configuration
-
-The script includes several configurable parameters:
-
-- Maximum chip temperature: 66°C
-- Maximum VR temperature: 86°C
-- Maximum allowed voltage: 1400mV
-- Minimum allowed voltage: 1000mV
-- Maximum allowed frequency: 1200MHz
-- Maximum power consumption: 40W
-- Minimum allowed frequency: 400MHz
-- Minimum input voltage: 4800mV
-- Maximum input voltage: 5500mV
-- Benchmark duration: 10 minutes
-- Sample interval: 15 seconds
-- **Minimum required samples: 7** (for valid data processing)
-- Voltage increment: 20mV
-- Frequency increment: 25MHz
 
 ## Output
 
-The benchmark results are saved to `bitaxe_benchmark_results_<ip_address>.json`, containing:
+The benchmark results are saved to `25-03-13_benchmark_results_<ip_address>.json`, containing:
 - Complete test results for all combinations
 - Top 5 performing configurations ranked by hashrate
 - Top 5 most efficient configurations ranked by J/TH
@@ -114,25 +75,12 @@ The benchmark results are saved to `bitaxe_benchmark_results_<ip_address>.json`,
   - Input voltage measurements
   - Voltage/frequency combinations tested
 
-## Safety Features
-
-- Automatic temperature monitoring with safety cutoff (66°C chip temp)
-- Voltage regulator (VR) temperature monitoring with safety cutoff (86°C)
-- Input voltage monitoring with minimum threshold (4800mV) and maximum threshold (5500mV)
-- Power consumption monitoring with safety cutoff (40W)
-- Temperature validation (must be above 5°C)
-- Graceful shutdown on interruption (Ctrl+C)
-- Automatic reset to best performing settings after benchmarking
-- Input validation for safe voltage and frequency ranges
-- Hashrate validation to ensure stability
-- Protection against invalid system data
-- Outlier removal from benchmark results
 
 ## Benchmarking Process
 
 The tool follows this process:
 1. Starts with user-specified or default voltage/frequency
-2. Tests each combination for 20 minutes
+2. Tests each combination for 10 minutes
 3. Validates hashrate is within 8% of theoretical maximum
 4. Incrementally adjusts settings:
    - Increases frequency if stable
@@ -141,7 +89,8 @@ The tool follows this process:
 5. Records and ranks all successful configurations
 6. Automatically applies the best performing stable settings
 7. Restarts system after each test for stability
-8. Allows 90-second stabilization period between tests
+8. Allows 180-second stabilization period between tests
+9. Stop the test early if the hashrate is not up to standard after 5 minutes
 
 ## Data Processing
 

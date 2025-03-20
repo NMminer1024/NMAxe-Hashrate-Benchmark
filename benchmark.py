@@ -4,7 +4,7 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.1.01"
+_VERSION_           = "v0.1.02"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
@@ -164,7 +164,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
         pwr_avg                             = pwr_sum / current_count
         at_avg                              = at_sum / current_count
         remaining_time                      = (benchmark_time - current_count * sample_interval) if (benchmark_time - current_count * sample_interval) > 0 else 0
-        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3}°C | AT: {at:3}°C | Freq: {freq:3}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
+        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3d}°C | AT: {at:3d}°C | Freq: {freq:3d}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
         # Check if the benchmark is completed
         if current_count >= total_count:
             break
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     parser.add_argument("-vr", "--vcore_range", type=validate_range, default="1000,1300", help="ASIC Vcore range, default: 1000~1300 mV")
     parser.add_argument("-vs", "--vcore_step", type=int, default=25, help="Vcore step, default: 25 mV")
     parser.add_argument("-si", "--sample_interval", type=int, default=10, help="Sample interval in seconds, default: 10 seconds")
-    parser.add_argument("-bt", "--benchmark_time", type=int, default=600, help="Benchmark time in seconds, default: 600 seconds")
+    parser.add_argument("-bt", "--benchmark_time", type=int, default=600, help="Benchmark time for every round in seconds, default: 600 seconds")
     parser.add_argument("-st", "--stabilize_time", type=int, default=240, help="Wait stabilize time before benchmark in seconds, default: 240 seconds")
     parser.add_argument("-ip", "--axe_ip", type=str, help= "Target Axe IP address", required=True)
     args = parser.parse_args()
