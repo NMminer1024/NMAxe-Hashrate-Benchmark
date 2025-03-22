@@ -145,7 +145,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
             time.sleep(1)
             err_cnt += 1
             if err_cnt >= 3:
-                log_e("Failed to get system info 3 times. Exiting this benchmark...")
+                log_e("Failed to get system info 3 times. Exiting this round...")
                 break
             log_e(f"Failed to get system info, {err_cnt}/3")
             continue
@@ -157,7 +157,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
 
         # If the hashrate is continuous zero for 5 times, exit the benchmark
         if zero_hr_cnt >= 5:
-            log_e("Get zero-hashrate 5 times. Exiting this benchmark...")
+            log_e("Get zero-hashrate 5 times. Exiting this round...")
             break
 
 
