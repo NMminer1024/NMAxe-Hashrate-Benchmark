@@ -4,7 +4,7 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.1.02"
+_VERSION_           = "v0.1.03"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
@@ -183,7 +183,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
             break
         # to save time, if the average hashrate is too low, exit the benchmark
         if current_count >= total_count/2 and hr_avg < exp_hr*0.5:
-            log_e("The average hashrate is too low. Exiting this benchmark...")
+            log_e("The average hashrate is too low. Exiting this round...")
             break
 
     result = (hr_sum / total_count) >= exp_hr*0.94 # Check if the average hashrate is at least 94% of the expected hashrate
@@ -252,7 +252,8 @@ if __name__ == "__main__":
     for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):#increase the freq if stabel
         for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):# increase the vcore if unstabel
             benchmark_count += 1
-            log_w(f"=============================================== {benchmark_count:3d}  =================================================")
+            _, est_time = est_benchmark_time(freq, freq_max_val, freq_step, vcore, vcore_max_val, vcore_step, benchmark_time, stabilize_time)                                                                                                                                               
+            log_w(f"============================================== rounds [{benchmark_count:3d}/{est_cnt:3d}], {est_time//3600}h {est_time%3600//60}m {est_time%60}s left =========================================================")
             # Set the system settings
             if set_system_settings(target_ip, vcore, freq) == False:
                 log_e("Failed to set system settings. Exiting...")
@@ -285,7 +286,7 @@ if __name__ == "__main__":
                 save_benchmark_report(target_ip, results)
                 break
             else:   
-                log_e(f"Unstable settings {vcore}mV, Freq: {freq}MHz, increase Vcore and retrying...")
+                log_w(f"Unstable settings {vcore}mV, Freq: {freq}MHz, increase Vcore and retrying...")
                 time.sleep(1)
 
     log_i("Benchmark completed!")
