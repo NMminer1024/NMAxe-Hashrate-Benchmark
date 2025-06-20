@@ -4,7 +4,7 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.1.03"
+_VERSION_           = "v0.1.04"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
@@ -177,7 +177,9 @@ def benchmark(target_ip, sample_interval, benchmark_time):
         pwr_avg                             = pwr_sum / current_count
         at_avg                              = at_sum / current_count
         remaining_time                      = (benchmark_time - current_count * sample_interval) if (benchmark_time - current_count * sample_interval) > 0 else 0
-        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3d}°C | AT: {at:3d}°C | Freq: {freq:3d}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
+        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3.1f}°C | AT: {at:3.1f}°C | Freq: {freq:3d}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
+        # log_i(f"[{int(remaining_time):4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {int(vt):3d}°C | AT: {int(at):3d}°C | Freq: {int(freq):3d}MHz | Vcore: {int(vcore):4d}mV | Vbus: {int(vbus):5d}mV | Ibus: {int(ibus):4d}mA |")
+
         # Check if the benchmark is completed
         if current_count >= total_count:
             break
