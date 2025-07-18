@@ -4,7 +4,7 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.1.04"
+_VERSION_           = "v0.2.01"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
@@ -177,7 +177,7 @@ def benchmark(target_ip, sample_interval, benchmark_time):
         pwr_avg                             = pwr_sum / current_count
         at_avg                              = at_sum / current_count
         remaining_time                      = (benchmark_time - current_count * sample_interval) if (benchmark_time - current_count * sample_interval) > 0 else 0
-        log_i(f"[{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3.1f}°C | AT: {at:3.1f}°C | Freq: {freq:3d}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
+        log_i(f"[{target_ip}] [{remaining_time:4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {vt:3.1f}°C | AT: {at:3.1f}°C | Freq: {freq:3d}MHz | Vcore: {vcore:4d}mV | Vbus: {vbus:5d}mV | Ibus: {ibus:4d}mA |")
         # log_i(f"[{int(remaining_time):4d}s] [{(100*current_count/total_count):5.1f}%] | HR: {hr:6.1f}GH/s | EXP HR: {exp_hr:4.0f}GH/s | VT: {int(vt):3d}°C | AT: {int(at):3d}°C | Freq: {int(freq):3d}MHz | Vcore: {int(vcore):4d}mV | Vbus: {int(vbus):5d}mV | Ibus: {int(ibus):4d}mA |")
 
         # Check if the benchmark is completed
@@ -245,17 +245,40 @@ if __name__ == "__main__":
 
     # Estimate the total time cost
     est_cnt, est_time = est_benchmark_time(freq_min_val, freq_max_val, freq_step, vcore_min_val, vcore_max_val, vcore_step, benchmark_time, stabilize_time)
+    freq_steps = (freq_max_val - freq_min_val) // freq_step + 1
+    # Best case: find stable config at minimum voltage for each frequency
+    best_time = freq_steps * (benchmark_time + stabilize_time)
     log_i(f"Freq  range from {freq_min_val}MHz to {freq_max_val}MHz, step: {freq_step}MHz")
     log_i(f"Vcore range from {vcore_min_val}mV to {vcore_max_val}mV, step: {vcore_step}mV")
-    log_i(f"Sample every {sample_interval} seconds, estimated total {est_cnt} rounds will take {est_time//3600}h {est_time%3600//60}m {est_time%60}s at most, please be patient...")
+    log_i(f"Sample every {sample_interval} seconds, estimated time range:")
+    log_i(f"       Best case:  {best_time//3600}h {best_time%3600//60}m {best_time%60}s (if all frequencies are stable at minimum voltage)")
+    log_i(f"       Worst case: {est_time//3600}h {est_time%3600//60}m {est_time%60}s (if all combinations need to be tested)")
+    log_i(f"       Total {est_cnt} combinations maximum, please be patient...")
 
     benchmark_count = 0
     results = []
+    # Calculate total number of voltage steps for more accurate time estimation
+    vcore_steps = (vcore_max_val - vcore_min_val) // vcore_step + 1
+    freq_steps = (freq_max_val - freq_min_val) // freq_step + 1
+    completed_freq_count = 0
+    
     for freq in range(freq_min_val, freq_max_val + freq_step, freq_step):#increase the freq if stabel
+        vcore_count = 0  # Track voltage steps for current frequency
         for vcore in range(vcore_min_val, vcore_max_val + vcore_step, vcore_step):# increase the vcore if unstabel
             benchmark_count += 1
-            _, est_time = est_benchmark_time(freq, freq_max_val, freq_step, vcore, vcore_max_val, vcore_step, benchmark_time, stabilize_time)                                                                                                                                               
-            log_w(f"============================================== rounds [{benchmark_count:3d}/{est_cnt:3d}], {est_time//3600}h {est_time%3600//60}m {est_time%60}s left =========================================================")
+            vcore_count += 1
+            # Calculate remaining time based on current position in loops
+            remaining_frequencies = ((freq_max_val - freq) // freq_step) + 1  # Including current frequency
+            remaining_vcore_for_current_freq = ((vcore_max_val - vcore) // vcore_step) + 1  # Including current vcore
+            # Worst case: complete all remaining vcore for current freq + all vcore for remaining frequencies
+            remaining_rounds_max = remaining_vcore_for_current_freq + (remaining_frequencies - 1) * vcore_steps
+            # Best case: only one vcore test per remaining frequency
+            remaining_rounds_min = remaining_frequencies
+            est_time_remaining_max = remaining_rounds_max * (benchmark_time + stabilize_time)
+            est_time_remaining_min = remaining_rounds_min * (benchmark_time + stabilize_time)
+            # Update estimated total based on actual completion rate
+            estimated_total = completed_freq_count + remaining_frequencies
+            log_w(f"============================================== rounds [{benchmark_count:3d}/~{est_cnt:3d}], freq [{completed_freq_count:3d}/{freq_steps:3d}], vcore [{vcore_count:2d}/{vcore_steps:2d}], {est_time_remaining_min//3600}h {est_time_remaining_min%3600//60}m ~ {est_time_remaining_max//3600}h {est_time_remaining_max%3600//60}m left =========================================================")
             # Set the system settings
             if set_system_settings(target_ip, vcore, freq) == False:
                 log_e("Failed to set system settings. Exiting...")
@@ -273,6 +296,7 @@ if __name__ == "__main__":
 
             log_w(f"Completed! | Avg HR: {avg_hr:6.1f}GH/s | expected HR: {exp_hr:6.1f}GH/s | Avg EFF: {avg_eff:6.3f}J/TH | Avg PWR: {avg_pwr:6.3f}W")
             if res == True:
+                completed_freq_count += 1  # Increment completed frequency count
                 log_i(f"Stable setting {vcore}mV, Freq: {freq}MHz, increase freq and retrying...")
                 # Save the benchmark results
                 result = {
