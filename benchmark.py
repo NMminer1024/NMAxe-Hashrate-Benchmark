@@ -4,7 +4,7 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.2.01"
+_VERSION_           = "v0.3.01"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
 
 def load_logo():  
@@ -105,8 +105,8 @@ def get_system_info(ip):
 
 def set_system_settings(ip, core_voltage, frequency):
     settings = {
-        "coreVoltage": core_voltage,
-        "frequency": frequency
+        "asicVcoreReq": core_voltage,
+        "asicFreqReq": frequency
     }
     try:
         response = requests.patch(f"http://{ip}/api/system", json=settings, timeout=10)
@@ -163,8 +163,8 @@ def benchmark(target_ip, sample_interval, benchmark_time):
 
 
         current_count += 1
-        hr, vt, at, freq, vcore, vbus, ibus = info.get('hashRate', 0), info.get('vrTemp', 0), info.get('temp', 0), info.get('frequency', 0), info.get('coreVoltageActual', 0), info.get('voltage', 0), info.get('current', 0)
-        small_core_count, asic_count        = info.get("smallCoreCount", 0), info.get("asicCount", 0)
+        hr, vt, at, freq, vcore, vbus, ibus = info.get('hashRate', 0), info.get('vcoreTemp', 0), info.get('asicTemp', 0), info.get('freqReq', 0), info.get('vcoreActual', 0), info.get('voltage', 0), info.get('current', 0)
+        small_core_count, asic_count        = info.get("smallCoreCnt", 0), info.get("asicCount", 0)
         exp_hr                              = freq * ((small_core_count * asic_count) / 1000)  # Calculate expected hashrate based on frequency
         # Calculate the sum values
         at_sum                              += at
@@ -235,9 +235,9 @@ if __name__ == "__main__":
 
     # For NMAxe, check if the firmware version is supported
     # For other Axe models, the firmware version check is not required
-    board_type = info.get('boardType', "Unknown")
+    board_type = info.get('hwModel', "Unknown")
     if "NMAxe" in board_type:
-        version = info.get('version', "v0.0.00")
+        version = info.get('fwVersion', "v0.0.00")
         result = compare_versions(version, FW_VERSION_REQUIRED)
         if result < 0:
             log_w(f"WARNING: The firmware version {version} haven't supported yet. firmware required {FW_VERSION_REQUIRED} at least.")
