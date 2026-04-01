@@ -4,8 +4,11 @@ from src.log import *
 from argparse import ArgumentParser, ArgumentTypeError
 import re
 
-_VERSION_           = "v0.3.01"
+_VERSION_           = "v0.4.01"
 FW_VERSION_REQUIRED = "v2.5.21" # The minimum firmware version required for this tool
+
+# Set to True when a firmware v3.x.xx+ nested-API response is detected
+_use_new_api = False
 
 def load_logo():  
     log_p("===========================================DISCLAIMER=================================================")
@@ -62,6 +65,39 @@ def compare_versions(version1, version2):
     
     return 0
 
+def normalize_system_info(raw):
+    """
+    Normalize /api/system/info response to a flat dict.
+    Supports both:
+      - Old flat format (firmware < v3.x.xx)
+      - New nested format (firmware >= v3.x.xx)
+    """
+    global _use_new_api
+    # New firmware v3.x.xx+ returns a nested object containing an 'identity' sub-object
+    if isinstance(raw.get('identity'), dict):
+        _use_new_api = True
+        power    = raw.get('power', {})
+        temps    = raw.get('temps', {})
+        asic_obj = raw.get('asic', {})
+        miner    = raw.get('miner', {})
+        identity = raw.get('identity', {})
+        return {
+            'hashRate':     miner.get('hashRate', 0),      # GH/s
+            'vcoreTemp':    temps.get('vcore', 0),         # °C
+            'asicTemp':     temps.get('asic', 0),          # °C
+            'freqReq':      asic_obj.get('freqReq', 0),    # MHz
+            'vcoreActual':  asic_obj.get('vcoreReal', 0),  # mV
+            'voltage':      power.get('vbus', 0),          # mV
+            'current':      power.get('ibus', 0),          # mA
+            'smallCoreCnt': asic_obj.get('smallCoreCnt', 0),
+            'asicCount':    asic_obj.get('count', 0),
+            'hwModel':      identity.get('hwModel', 'Unknown'),
+            'fwVersion':    identity.get('fwVersion', 'v0.0.00'),
+        }
+    else:
+        _use_new_api = False
+        return raw  # Old flat format, no transformation needed
+
 def validate_range(value):
     try:
         # check if the string contains exactly one comma
@@ -92,7 +128,7 @@ def get_system_info(ip):
     try:
         response = requests.get(f"http://{ip}/api/system/info", timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
-        return response.json()
+        return normalize_system_info(response.json())
     except requests.exceptions.Timeout:
         log_e(f"Target Axe {ip} is responding timeout")
         return None
@@ -108,8 +144,10 @@ def set_system_settings(ip, core_voltage, frequency):
         "asicVcoreReq": core_voltage,
         "asicFreqReq": frequency
     }
+    # firmware v3.x.xx+ uses /api/setting/mining; older firmware uses /api/system
+    endpoint = f"http://{ip}/api/setting/mining" if _use_new_api else f"http://{ip}/api/system"
     try:
-        response = requests.patch(f"http://{ip}/api/system", json=settings, timeout=10)
+        response = requests.patch(endpoint, json=settings, timeout=10)
         response.raise_for_status()  # Raise an exception for HTTP errors
         log_i(f"System settings update, Vcore: {core_voltage}mV, Frequency: {frequency}MHz")
         return True
